@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"image"
+	"image/gif"
 	_ "image/gif"
+	"image/jpeg"
 	_ "image/jpeg"
 	"image/png"
 	_ "image/png"
@@ -17,27 +20,39 @@ import (
 
 func main() {
 	fmt.Println("start.")
+	from := flag.String("from", "jpeg", "")
+	to := flag.String("to", "png", "")
+	flag.Parse()
+
+	if !isValidFlag(from, []string{"jpeg", "png", "gif"}) {
+		panic("invalid flag")
+	}
+
+	if !isValidFlag(to, []string{"jpeg", "png", "gif"}) {
+		panic("invalid flag")
+	}
+
 	paths := getfilePaths("./src")
 
 	for _, p := range paths {
-		i, err := extractImage(p)
+		i, err := extractImage(p, from)
 		if err != nil {
-			fmt.Println(err)
 			fmt.Println("skip this file")
 			continue
 		}
 
-		b, err := convert(i)
+		b, err := convert(i, to)
 		if err != nil {
 			fmt.Println(err)
 			panic("failed to convert")
 		}
-
-		_, err = save(b, strings.Split(filepath.Base(p), ".")[0])
+		filename := strings.Split(filepath.Base(p), ".")[0] + "." + *to
+		path, err := save(b, filename)
 		if err != nil {
 			fmt.Println(err)
 			panic("failed to save")
 		}
+		fmt.Println(path, "is created")
 	}
 	fmt.Println("fin.")
 }
@@ -61,7 +76,7 @@ func getfilePaths(root string) []string {
 	return files
 }
 
-func extractImage(path string) (image.Image, error) {
+func extractImage(path string, from *string) (image.Image, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -73,25 +88,38 @@ func extractImage(path string) (image.Image, error) {
 		return nil, err
 	}
 
-	if format != "jpeg" {
-		return nil, fmt.Errorf("format error: expected jpeg, actual %v", format)
+	if format != *from {
+		return nil, fmt.Errorf("format error: expected %v, actual %v", *from, format)
 	}
 
 	return i, nil
 }
 
-func convert(i image.Image) (*bytes.Buffer, error) {
+func convert(i image.Image, to *string) (*bytes.Buffer, error) {
 	var b bytes.Buffer
 
-	if err := png.Encode(&b, i); err != nil {
-		return nil, err
+	switch *to {
+	case "jpeg":
+		if err := jpeg.Encode(&b, i, nil); err != nil {
+			return nil, err
+		}
+	case "png":
+		if err := png.Encode(&b, i); err != nil {
+			return nil, err
+		}
+	case "gif":
+		if err := gif.Encode(&b, i, nil); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("invalid format")
 	}
 
 	return &b, nil
 }
 
 func save(b *bytes.Buffer, name string) (string, error) {
-	dst := filepath.Join("./dst", name) + ".png"
+	dst := filepath.Join("./dst", name)
 	f, err := os.Create(dst)
 	if err != nil {
 		return "", err
@@ -104,4 +132,15 @@ func save(b *bytes.Buffer, name string) (string, error) {
 	}
 
 	return dst, nil
+}
+
+func isValidFlag(flag *string, validList []string) bool {
+	var valid bool
+	for _, v := range validList {
+		if *flag == v {
+			valid = true
+			break
+		}
+	}
+	return valid
 }
